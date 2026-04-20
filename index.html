@@ -64,18 +64,26 @@
       };
 
       // Generate QR code when QR tab is active
+      const generateQR = (attempt = 0) => {
+        if (!hotelData || !qrCanvasRef.current) return;
+        if (!window.QRCode) {
+          if (attempt < 20) setTimeout(() => generateQR(attempt + 1), 300);
+          return;
+        }
+        const qrData = JSON.stringify({
+          hotelCode: hotelData.hotelCode,
+          name: hotelData.name,
+          location: hotelData.location || ''
+        });
+        window.QRCode.toCanvas(qrCanvasRef.current, qrData, {
+          width: 200, margin: 2,
+          color: { dark: '#000000', light: '#ffffff' }
+        }, (err) => { if (err) console.error(err); });
+      };
+
       useEffect(() => {
-        if (activeTab === 'qr' && hotelData && qrCanvasRef.current && window.QRCode) {
-          const qrData = JSON.stringify({
-            hotelCode: hotelData.hotelCode,
-            name: hotelData.name,
-            location: hotelData.location || ''
-          });
-          window.QRCode.toCanvas(qrCanvasRef.current, qrData, {
-            width: 200,
-            margin: 2,
-            color: { dark: '#000000', light: '#ffffff' }
-          }, (err) => { if (err) console.error(err); });
+        if (activeTab === 'qr' && hotelData) {
+          setTimeout(() => generateQR(), 100);
         }
       }, [activeTab, hotelData]);
 
