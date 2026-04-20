@@ -7,7 +7,6 @@
   <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
   <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-  <script src="https://unpkg.com/qrcode@1.5.3/build/qrcode.min.js"></script>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
     body { background: #f3f4f6; }
@@ -47,8 +46,6 @@
       const [guestComments, setGuestComments] = useState("");
       const [saving, setSaving] = useState(false);
       const [approvingId, setApprovingId] = useState(null);
-      const qrCanvasRef = useRef(null);
-      const qrGeneratedRef = useRef(false);
 
       const loadGuests = async (tok, hid) => {
         if (!tok || !hid) return;
@@ -64,149 +61,6 @@
       };
 
       // Generate QR code when QR tab is active
-      const generateQR = (attempt = 0) => {
-        if (!hotelData || !qrCanvasRef.current) return;
-        if (!window.QRCode) {
-          if (attempt < 20) setTimeout(() => generateQR(attempt + 1), 300);
-          return;
-        }
-        const qrData = JSON.stringify({
-          hotelCode: hotelData.hotelCode,
-          name: hotelData.name,
-          location: hotelData.location || ''
-        });
-        window.QRCode.toCanvas(qrCanvasRef.current, qrData, {
-          width: 200, margin: 2,
-          color: { dark: '#000000', light: '#ffffff' }
-        }, (err) => { if (err) console.error(err); });
-      };
-
-      useEffect(() => {
-        if (activeTab === 'qr' && hotelData) {
-          setTimeout(() => generateQR(), 100);
-        }
-      }, [activeTab, hotelData]);
-
-      const handleDownloadQR = () => {
-        const canvas = qrCanvasRef.current;
-        if (!canvas) return;
-        // Create a bigger canvas with hotel name
-        const bigCanvas = document.createElement('canvas');
-        bigCanvas.width = 300;
-        bigCanvas.height = 360;
-        const ctx = bigCanvas.getContext('2d');
-        ctx.fillStyle = '#ffffff';
-        ctx.fillRect(0, 0, 300, 360);
-        // Draw QR
-        ctx.drawImage(canvas, 50, 20, 200, 200);
-        // Draw hotel name
-        ctx.fillStyle = '#111827';
-        ctx.font = 'bold 18px Arial';
-        ctx.textAlign = 'center';
-        ctx.fillText(hotelData.name, 150, 250);
-        // Draw subtitle
-        ctx.fillStyle = '#6b7280';
-        ctx.font = '13px Arial';
-        ctx.fillText('Scan to check in with ShortID', 150, 275);
-        // Draw hotel code
-        ctx.fillStyle = '#4f46e5';
-        ctx.font = 'bold 13px monospace';
-        ctx.fillText(hotelData.hotelCode, 150, 300);
-        // Draw ShortID branding
-        ctx.font = 'bold 16px Arial';
-        ctx.fillStyle = '#002B5C';
-        ctx.fillText('Short', 130, 335);
-        ctx.fillStyle = '#3DB5E6';
-        ctx.fillText('ID', 165, 335);
-
-        const link = document.createElement('a');
-        link.download = `${hotelData.name}-QR.png`;
-        link.href = bigCanvas.toDataURL('image/png');
-        link.click();
-      };
-
-      const handleLogin = async () => {
-        setError(""); setLoading(true);
-        try {
-          const res = await fetch(`${API_URL}/api/hotel/login`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ email, password })
-          });
-          const data = await res.json();
-          if (data.success) {
-            setToken(data.token); setHotelData(data.hotel); setHotelId(data.hotel._id);
-            setScreen("dashboard"); loadGuests(data.token, data.hotel._id);
-          } else { setError(data.error || "Login failed"); }
-        } catch(e) { setError("Network error: " + e.message); }
-        setLoading(false);
-      };
-
-      const handleRegister = async () => {
-        setError(""); setSuccess(""); setLoading(true);
-        if (!regName || !regLocation || !regEmail || !regPassword) {
-          setError("All fields are required"); setLoading(false); return;
-        }
-        try {
-          const res = await fetch(`${API_URL}/api/hotel/register`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ name: regName, location: regLocation, email: regEmail, password: regPassword })
-          });
-          const data = await res.json();
-          if (data.success) {
-            setSuccess("Hotel registered! You can now login.");
-            setRegName(""); setRegLocation(""); setRegEmail(""); setRegPassword("");
-            setAuthTab("login"); setEmail(regEmail);
-          } else { setError(data.error || "Registration failed"); }
-        } catch(e) { setError("Network error: " + e.message); }
-        setLoading(false);
-      };
-
-      const handleApprove = async (id) => {
-        setApprovingId(id);
-        try {
-          const res = await fetch(`${API_URL}/api/share/approve/${id}`, {
-            method: "PUT", headers: { Authorization: `Bearer ${token}` }
-          });
-          const data = await res.json();
-          if (data.success) loadGuests(token, hotelId);
-        } catch(e) { console.error(e); }
-        setApprovingId(null);
-      };
-
-      const handleSaveGuest = async () => {
-        setSaving(true);
-        try {
-          const res = await fetch(`${API_URL}/api/share/update-guest/${selectedGuest._id}`, {
-            method: "PUT",
-            headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-            body: JSON.stringify({ roomNumber, comments: guestComments })
-          });
-          const data = await res.json();
-          if (data.success) {
-            setSelectedGuest({...selectedGuest, roomNumber, comments: guestComments});
-            loadGuests(token, hotelId);
-            alert("Saved!");
-          }
-        } catch(e) { console.error(e); }
-        setSaving(false);
-      };
-
-      const handleLogout = () => {
-        setToken(null); setHotelData(null); setHotelId(null);
-        setGuests([]); setScreen("login"); setEmail(""); setPassword("");
-      };
-
-      const filteredGuests = guests.filter(g => {
-        if (!searchQuery) return true;
-        const q = searchQuery.toLowerCase();
-        if (searchBy === "name") return (g.guestName||"").toLowerCase().includes(q);
-        if (searchBy === "room") return (g.roomNumber||"").toLowerCase().includes(q);
-        if (searchBy === "sid") return (g.sidNumber||"").toLowerCase().includes(q);
-        return true;
-      });
-
       const s = {
         card: { background: "white", borderRadius: 12, padding: 20, marginBottom: 16, boxShadow: "0 1px 3px rgba(0,0,0,0.08)" },
         input: { width: "100%", padding: "10px 12px", border: "1px solid #d1d5db", borderRadius: 8, fontSize: 14, boxSizing: "border-box" },
@@ -374,15 +228,19 @@
             )}
 
             {/* QR TAB */}
-            {activeTab === "qr" && (
+            {activeTab === "qr" && hotelData && (
               <div style={{ padding: 24 }}>
                 <div style={{ maxWidth: 480, margin: "0 auto", ...s.card, padding: 28 }}>
                   <h2 style={{ fontSize: 20, fontWeight: 700, marginBottom: 6 }}>Your Hotel QR Code</h2>
                   <p style={{ fontSize: 13, color: "#6b7280", marginBottom: 20 }}>Guests scan this with the ShortID app to check in</p>
 
                   <div style={{ background: "#f9fafb", borderRadius: 12, padding: 32, display: "flex", flexDirection: "column", alignItems: "center", marginBottom: 20 }}>
-                    <canvas ref={qrCanvasRef} style={{ borderRadius: 8 }} />
-                    <p style={{ fontFamily: "monospace", fontSize: 13, color: "#6b7280", marginTop: 12 }}>{hotelData?.hotelCode}</p>
+                    <img
+                      src={`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(JSON.stringify({ hotelCode: hotelData.hotelCode, name: hotelData.name, location: hotelData.location || "" }))}`}
+                      alt="Hotel QR Code"
+                      style={{ width: 200, height: 200, borderRadius: 8 }}
+                    />
+                    <p style={{ fontFamily: "monospace", fontSize: 13, color: "#6b7280", marginTop: 12 }}>{hotelData.hotelCode}</p>
                   </div>
 
                   <p style={{ textAlign: "center", fontSize: 14, color: "#6b7280", marginBottom: 14 }}>Display at reception for guests to scan</p>
@@ -390,13 +248,19 @@
                   <div style={{ background: "#eff6ff", border: "1px solid #bfdbfe", borderRadius: 8, padding: 12, marginBottom: 16 }}>
                     <p style={{ fontSize: 12, color: "#6b7280", marginBottom: 4 }}>QR encodes:</p>
                     <p style={{ fontSize: 12, fontFamily: "monospace", color: "#1e40af", wordBreak: "break-all" }}>
-                      {JSON.stringify({ hotelCode: hotelData?.hotelCode, name: hotelData?.name, location: hotelData?.location })}
+                      {JSON.stringify({ hotelCode: hotelData.hotelCode, name: hotelData.name, location: hotelData.location })}
                     </p>
                   </div>
 
-                  <button onClick={handleDownloadQR} style={{ ...s.btnPrimary, width: "100%", padding: 12, fontSize: 15, display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}>
+                  <a
+                    href={`https://api.qrserver.com/v1/create-qr-code/?size=400x400&data=${encodeURIComponent(JSON.stringify({ hotelCode: hotelData.hotelCode, name: hotelData.name, location: hotelData.location || "" }))}`}
+                    download={`${hotelData.name}-QR.png`}
+                    target="_blank"
+                    rel="noreferrer"
+                    style={{ ...s.btnPrimary, width: "100%", padding: 12, fontSize: 15, display: "flex", alignItems: "center", justifyContent: "center", gap: 8, textDecoration: "none", borderRadius: 8 }}
+                  >
                     ⬇ Download QR Code (PNG)
-                  </button>
+                  </a>
                 </div>
               </div>
             )}
