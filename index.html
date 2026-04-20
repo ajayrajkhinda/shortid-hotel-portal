@@ -17,7 +17,7 @@
 <body>
   <div id="root"></div>
   <script type="text/babel">
-    const { useState, useEffect, useRef } = React;
+    const { useState, useEffect } = React;
     const API_URL = "https://shortid-backend-production.up.railway.app";
 
     function App() {
@@ -60,7 +60,87 @@
         setGuestsLoading(false);
       };
 
-      // Generate QR code when QR tab is active
+      const handleLogin = async () => {
+        setError(""); setLoading(true);
+        try {
+          const res = await fetch(`${API_URL}/api/hotel/login`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ email, password })
+          });
+          const data = await res.json();
+          if (data.success) {
+            setToken(data.token); setHotelData(data.hotel); setHotelId(data.hotel._id);
+            setScreen("dashboard"); loadGuests(data.token, data.hotel._id);
+          } else { setError(data.error || "Login failed"); }
+        } catch(e) { setError("Network error: " + e.message); }
+        setLoading(false);
+      };
+
+      const handleRegister = async () => {
+        setError(""); setSuccess(""); setLoading(true);
+        if (!regName || !regLocation || !regEmail || !regPassword) {
+          setError("All fields are required"); setLoading(false); return;
+        }
+        try {
+          const res = await fetch(`${API_URL}/api/hotel/register`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ name: regName, location: regLocation, email: regEmail, password: regPassword })
+          });
+          const data = await res.json();
+          if (data.success) {
+            setSuccess("Hotel registered! You can now login.");
+            setRegName(""); setRegLocation(""); setRegEmail(""); setRegPassword("");
+            setAuthTab("login"); setEmail(regEmail);
+          } else { setError(data.error || "Registration failed"); }
+        } catch(e) { setError("Network error: " + e.message); }
+        setLoading(false);
+      };
+
+      const handleApprove = async (id) => {
+        setApprovingId(id);
+        try {
+          const res = await fetch(`${API_URL}/api/share/approve/${id}`, {
+            method: "PUT", headers: { Authorization: `Bearer ${token}` }
+          });
+          const data = await res.json();
+          if (data.success) loadGuests(token, hotelId);
+        } catch(e) { console.error(e); }
+        setApprovingId(null);
+      };
+
+      const handleSaveGuest = async () => {
+        setSaving(true);
+        try {
+          const res = await fetch(`${API_URL}/api/share/update-guest/${selectedGuest._id}`, {
+            method: "PUT",
+            headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+            body: JSON.stringify({ roomNumber, comments: guestComments })
+          });
+          const data = await res.json();
+          if (data.success) {
+            setSelectedGuest({...selectedGuest, roomNumber, comments: guestComments});
+            loadGuests(token, hotelId); alert("Saved!");
+          }
+        } catch(e) { console.error(e); }
+        setSaving(false);
+      };
+
+      const handleLogout = () => {
+        setToken(null); setHotelData(null); setHotelId(null);
+        setGuests([]); setScreen("login"); setEmail(""); setPassword("");
+      };
+
+      const filteredGuests = guests.filter(g => {
+        if (!searchQuery) return true;
+        const q = searchQuery.toLowerCase();
+        if (searchBy === "name") return (g.guestName||"").toLowerCase().includes(q);
+        if (searchBy === "room") return (g.roomNumber||"").toLowerCase().includes(q);
+        if (searchBy === "sid") return (g.sidNumber||"").toLowerCase().includes(q);
+        return true;
+      });
+
       const s = {
         card: { background: "white", borderRadius: 12, padding: 20, marginBottom: 16, boxShadow: "0 1px 3px rgba(0,0,0,0.08)" },
         input: { width: "100%", padding: "10px 12px", border: "1px solid #d1d5db", borderRadius: 8, fontSize: 14, boxSizing: "border-box" },
@@ -68,6 +148,7 @@
         btnSuccess: { background: "#16a34a", color: "white", border: "none", borderRadius: 8, cursor: "pointer", fontWeight: 600, padding: "7px 14px", fontSize: 13 },
       };
 
+      // ── LOGIN ──
       if (screen === "login") return (
         <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: "linear-gradient(135deg,#4f46e5,#7c3aed)", padding: 24 }}>
           <div style={{ width: "100%", maxWidth: 420, background: "white", borderRadius: 16, padding: 32, boxShadow: "0 20px 60px rgba(0,0,0,0.25)" }}>
@@ -81,8 +162,7 @@
               {["login","register"].map(tab => (
                 <button key={tab} onClick={() => { setAuthTab(tab); setError(""); setSuccess(""); }}
                   style={{ flex: 1, padding: "8px 0", border: "none", borderRadius: 6, cursor: "pointer", fontSize: 14, fontWeight: 600,
-                    background: authTab===tab ? "white" : "transparent",
-                    color: authTab===tab ? "#4f46e5" : "#6b7280",
+                    background: authTab===tab ? "white" : "transparent", color: authTab===tab ? "#4f46e5" : "#6b7280",
                     boxShadow: authTab===tab ? "0 1px 3px rgba(0,0,0,0.1)" : "none" }}>
                   {tab === "login" ? "Login" : "Register"}
                 </button>
@@ -122,13 +202,12 @@
         </div>
       );
 
+      // ── DASHBOARD LAYOUT ──
       return (
         <div style={{ display: "flex", minHeight: "100vh" }}>
           <div style={{ width: 220, background: "#3730a3", color: "white", display: "flex", flexDirection: "column", flexShrink: 0, position: "sticky", top: 0, height: "100vh" }}>
             <div style={{ padding: "20px 16px 12px" }}>
-              <div style={{ fontSize: 22, fontWeight: 800 }}>
-                <span style={{ color: "#c7d2fe" }}>Short</span><span style={{ color: "#818cf8" }}>ID</span>
-              </div>
+              <div style={{ fontSize: 22, fontWeight: 800 }}><span style={{ color: "#c7d2fe" }}>Short</span><span style={{ color: "#818cf8" }}>ID</span></div>
               <p style={{ fontSize: 11, opacity: 0.6, marginTop: 2 }}>Hotel Portal</p>
             </div>
             <nav style={{ flex: 1, padding: "0 8px" }}>
@@ -139,9 +218,7 @@
               ))}
             </nav>
             <div style={{ padding: "10px 8px", borderTop: "1px solid rgba(255,255,255,0.15)" }}>
-              <button onClick={handleLogout} style={{ width: "100%", padding: "10px 14px", background: "transparent", border: "none", color: "white", borderRadius: 8, cursor: "pointer", fontSize: 14, textAlign: "left" }}>
-                🚪 Logout
-              </button>
+              <button onClick={handleLogout} style={{ width: "100%", padding: "10px 14px", background: "transparent", border: "none", color: "white", borderRadius: 8, cursor: "pointer", fontSize: 14, textAlign: "left" }}>🚪 Logout</button>
             </div>
           </div>
 
@@ -233,7 +310,6 @@
                 <div style={{ maxWidth: 480, margin: "0 auto", ...s.card, padding: 28 }}>
                   <h2 style={{ fontSize: 20, fontWeight: 700, marginBottom: 6 }}>Your Hotel QR Code</h2>
                   <p style={{ fontSize: 13, color: "#6b7280", marginBottom: 20 }}>Guests scan this with the ShortID app to check in</p>
-
                   <div style={{ background: "#f9fafb", borderRadius: 12, padding: 32, display: "flex", flexDirection: "column", alignItems: "center", marginBottom: 20 }}>
                     <img
                       src={`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(JSON.stringify({ hotelCode: hotelData.hotelCode, name: hotelData.name, location: hotelData.location || "" }))}`}
@@ -242,23 +318,17 @@
                     />
                     <p style={{ fontFamily: "monospace", fontSize: 13, color: "#6b7280", marginTop: 12 }}>{hotelData.hotelCode}</p>
                   </div>
-
                   <p style={{ textAlign: "center", fontSize: 14, color: "#6b7280", marginBottom: 14 }}>Display at reception for guests to scan</p>
-
                   <div style={{ background: "#eff6ff", border: "1px solid #bfdbfe", borderRadius: 8, padding: 12, marginBottom: 16 }}>
                     <p style={{ fontSize: 12, color: "#6b7280", marginBottom: 4 }}>QR encodes:</p>
                     <p style={{ fontSize: 12, fontFamily: "monospace", color: "#1e40af", wordBreak: "break-all" }}>
                       {JSON.stringify({ hotelCode: hotelData.hotelCode, name: hotelData.name, location: hotelData.location })}
                     </p>
                   </div>
-
                   <a
                     href={`https://api.qrserver.com/v1/create-qr-code/?size=400x400&data=${encodeURIComponent(JSON.stringify({ hotelCode: hotelData.hotelCode, name: hotelData.name, location: hotelData.location || "" }))}`}
-                    download={`${hotelData.name}-QR.png`}
-                    target="_blank"
-                    rel="noreferrer"
-                    style={{ ...s.btnPrimary, width: "100%", padding: 12, fontSize: 15, display: "flex", alignItems: "center", justifyContent: "center", gap: 8, textDecoration: "none", borderRadius: 8 }}
-                  >
+                    download target="_blank" rel="noreferrer"
+                    style={{ ...s.btnPrimary, width: "100%", padding: 12, fontSize: 15, display: "flex", alignItems: "center", justifyContent: "center", gap: 8, textDecoration: "none", borderRadius: 8 }}>
                     ⬇ Download QR Code (PNG)
                   </a>
                 </div>
@@ -290,7 +360,7 @@
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
                     <h2 style={{ fontSize: 19, fontWeight: 700 }}>Guest Details</h2>
                     <div style={{ background: "#eef2ff", border: "1px solid #c7d2fe", borderRadius: 8, padding: "8px 14px", textAlign: "center" }}>
-                      <p style={{ fontSize: 11, color: "#4f46e5", marginBottom: 2 }}>Guest ID</p>
+                      <p style={{ fontSize: 11, color: "#4f46e5", marginBottom: 2 }}>ShortID</p>
                       <p style={{ fontSize: 14, fontFamily: "monospace", fontWeight: 700, color: "#3730a3" }}>{selectedGuest.sidNumber}</p>
                     </div>
                   </div>
@@ -298,7 +368,7 @@
                     <h3 style={{ fontSize: 20, fontWeight: 700, textAlign: "center", marginBottom: 4 }}>{selectedGuest.guestName}</h3>
                     <p style={{ textAlign: "center", color: "#6b7280", fontSize: 13, marginBottom: 2 }}>{selectedGuest.guestGender}</p>
                     <p style={{ textAlign: "center", fontWeight: 600, fontSize: 15, marginBottom: 14 }}>{selectedGuest.guestDOB}</p>
-                    <p style={{ textAlign: "center", fontSize: 14, color: "#374151", marginBottom: 16 }}><strong>Address:</strong> {selectedGuest.guestAddress}</p>
+                    <p style={{ textAlign: "center", fontSize: 14, color: "#374151", marginBottom: 8 }}><strong>Address:</strong> {selectedGuest.guestAddress}</p>
                     <p style={{ textAlign: "center", fontSize: 14, color: "#374151", marginBottom: 16 }}>📞 {selectedGuest.guestPhone}</p>
                     <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between" }}>
                       <div style={{ width: 90, height: 90, background: "#f3f4f6", border: "1px solid #e5e7eb", borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "center" }}>
